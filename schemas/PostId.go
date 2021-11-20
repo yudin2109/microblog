@@ -2,6 +2,7 @@ package schemas
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -13,6 +14,15 @@ const LEN = 12
 func (id PostId) ToBase64URL() string {
 	bytes := [LEN]byte(id)
 	return base64.URLEncoding.EncodeToString(bytes[:])
+}
+
+func IDFromText(s string) (PostId, error) {
+	var postId primitive.ObjectID
+	_, err := hex.Decode(postId[:], []byte(s)[:])
+	if err != nil {
+		return [12]byte{}, err
+	}
+	return PostId(postId), nil
 }
 
 func IDFromRawString(s string) (PostId, error) {

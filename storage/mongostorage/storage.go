@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"netwitter/plain"
 	"netwitter/schemas"
+	"netwitter/workers"
 	"time"
 )
 
@@ -17,9 +18,10 @@ const collName = "posts"
 
 type storage struct {
 	postsCollection *mongo.Collection
+	scheduler       workers.Scheduler
 }
 
-func NewStorage(mongoURL string, mongoName string) *storage {
+func NewStorage(mongoURL string, mongoName string, scheduler workers.Scheduler) *storage {
 	ctx := context.Background()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURL))
 	if err != nil {
@@ -32,6 +34,7 @@ func NewStorage(mongoURL string, mongoName string) *storage {
 
 	return &storage{
 		postsCollection: postsCollection,
+		scheduler:       scheduler,
 	}
 }
 
@@ -57,6 +60,10 @@ func (s *storage) PutPost(ctx context.Context, userId schemas.UserId, text schem
 	_, err := s.postsCollection.InsertOne(ctx, newPost)
 	if err != nil {
 		return nil, fmt.Errorf("insertion failed: %s", err.Error())
+	}
+	err = s.scheduler.PublishSpreadPostOverSubs(userId, newPost.ID)
+	if err != nil {
+		return nil, err
 	}
 	return newPost, nil
 }
@@ -146,7 +153,40 @@ func (s *storage) EditPost(ctx context.Context, postId schemas.PostId, authorId 
 		}
 		return nil, fmt.Errorf("mongo error:%s", err.Error())
 	}
+	err = s.scheduler.PublishSpreadPostOverSubs(editedPost.AuthorID, editedPost.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &editedPost, nil
+}
+
+type MongoPostsIterator struct {
+	cursor *mongo.Cursor
+}
+
+func (mpi *MongoPostsIterator) GetNextPost(ctx context.Context) *schemas.Post {
+	hasNext := mpi.cursor.Next(ctx)
+	if !hasNext {
+		return nil
+	}
+
+	var post schemas.Post
+	err := mpi.cursor.Decode(&post)
+	if err != nil {
+		return nil
+	}
+	return &post
+}
+
+func (s *storage) GetAllPostsFromUser(ctx context.Context, authorId schemas.UserId) (plain.PostsIterator, error) {
+	mongoFilter := bson.M{"authorId": string(authorId)}
+
+	cursor, err := s.postsCollection.Find(ctx, mongoFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MongoPostsIterator{cursor: cursor}, nil
 }
 
 func (s *storage) Now() time.Time {

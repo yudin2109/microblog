@@ -1,6 +1,7 @@
 package plain
 
 import (
+	"context"
 	"fmt"
 	"netwitter/schemas"
 )
@@ -31,4 +32,8 @@ func CorrectDestruct(pageData GetUserPostsPageData) (*schemas.PostId, int, error
 	}
 
 	return firstPostID, size, nil
+}
+
+type PostsIterator interface {
+	GetNextPost(ctx context.Context) *schemas.Post
 }
