@@ -17,19 +17,25 @@ type Post struct {
 }
 
 type PostData struct {
-	ID        string `json:"id"`
-	Content   Text   `json:"text"`
-	AuthorID  string `json:"authorId"`
-	CreatedAt string `json:"createdAt"`
+	ID             string `json:"id"`
+	Content        Text   `json:"text"`
+	AuthorID       string `json:"authorId"`
+	CreatedAt      string `json:"createdAt"`
+	LastModifiedAt string `json:"lastModifiedAt"`
 }
 
 func (p *Post) ToPostData() PostData {
 	return PostData{
-		ID:        p.ID.ToBase64URL(),
-		Content:   p.Content,
-		AuthorID:  string(p.AuthorID),
-		CreatedAt: p.CreatedAt.UTC().Format(time.RFC3339),
+		ID:             p.ID.ToBase64URL(),
+		Content:        p.Content,
+		AuthorID:       string(p.AuthorID),
+		CreatedAt:      p.CreatedAt.UTC().Format(time.RFC3339),
+		LastModifiedAt: p.LastModifiedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func (p Post) GetVersion() int {
+	return p.Version
 }
 
 func (p Post) Copy() *Post {

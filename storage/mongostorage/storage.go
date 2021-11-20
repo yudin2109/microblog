@@ -47,10 +47,11 @@ func ensureIndexes(ctx context.Context, collection *mongo.Collection) {
 
 func (s *storage) PutPost(ctx context.Context, userId schemas.UserId, text schemas.Text) (*schemas.Post, error) {
 	newPost := &schemas.Post{
-		ID:        schemas.PostId(primitive.NewObjectID()),
-		AuthorID:  schemas.UserId(userId),
-		Content:   text,
-		CreatedAt: s.Now(),
+		ID:             schemas.PostId(primitive.NewObjectID()),
+		AuthorID:       userId,
+		Content:        text,
+		CreatedAt:      s.Now(),
+		LastModifiedAt: s.Now(),
 	}
 
 	_, err := s.postsCollection.InsertOne(ctx, newPost)
@@ -101,7 +102,7 @@ func (s *storage) GetUserPosts(ctx context.Context, authorID schemas.UserId, pag
 	}
 
 	if lastSeenID != nil && postList[0].ID != *lastSeenID {
-		return nil, nil, fmt.Errorf("something went wrong(lastseen missmatch): %s", err.Error())
+		return nil, nil, fmt.Errorf("something went wrong(lastseen missmatch): %s", *lastSeenID)
 	}
 
 	if lastSeenID != nil {
@@ -119,6 +120,33 @@ func (s *storage) GetUserPosts(ctx context.Context, authorID schemas.UserId, pag
 	}
 
 	return postList, nextPage, nil
+}
+
+func (s *storage) EditPost(ctx context.Context, postId schemas.PostId, authorId schemas.UserId, text schemas.Text) (*schemas.Post, error) {
+	mongoSelector := bson.D{{"_id", postId}}
+	mongoCommand := bson.D{
+		{
+			"$set", bson.D{
+				{"text", text},
+				{"lastModifiedAt", s.Now()},
+			},
+		},
+		{
+			"$inc", bson.D{{"version", 1}},
+		},
+	}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	result := s.postsCollection.FindOneAndUpdate(ctx, mongoSelector, mongoCommand, opts)
+
+	var editedPost schemas.Post
+	err := result.Decode(&editedPost)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, fmt.Errorf("not found:%s", postId)
+		}
+		return nil, fmt.Errorf("mongo error:%s", err.Error())
+	}
+	return &editedPost, nil
 }
 
 func (s *storage) Now() time.Time {

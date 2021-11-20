@@ -101,6 +101,19 @@ func (s *MemoryStorage) GetUserPosts(_ context.Context, authorID schemas.UserId,
 	return pack, nextPageToken, nil
 }
 
+func (s *MemoryStorage) EditPost(ctx context.Context, postId schemas.PostId, authorId schemas.UserId, text schemas.Text) (*schemas.Post, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	post, ok := s.postById[postId]
+	if !ok {
+		return nil, fmt.Errorf("not found: %s", postId)
+	}
+	post.Content = text
+	post.LastModifiedAt = time.Now()
+	return post.Copy(), nil
+}
+
 func MaxInt(a int, b int) int {
 	if a > b {
 		return a

@@ -35,6 +35,10 @@ type CreatePostRequestData struct {
 	Text string `json:"text"`
 }
 
+type EditPostRequestData struct {
+	Text string `json:"text"`
+}
+
 type GetUserPostsResponse struct {
 	Posts    []schemas.PostData `json:"posts"`
 	NextPage *string            `json:"nextPage,omitempty"`
@@ -56,7 +60,7 @@ func (h *HTTPHandler) HandleCreatePost(rw http.ResponseWriter, r *http.Request) 
 
 	text := data.Text
 	if text == "" {
-		http.Error(rw, "text must not ve empty", http.StatusBadRequest)
+		http.Error(rw, "text must not be empty", http.StatusBadRequest)
 		return
 	}
 
@@ -149,6 +153,65 @@ func (h *HTTPHandler) HandleGetUserPosts(rw http.ResponseWriter, r *http.Request
 	}
 
 	rawResponse, _ := json.Marshal(response)
+	rw.Header().Set("Content-Type", "application/json")
+	_, err = rw.Write(rawResponse)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+}
+
+func (h *HTTPHandler) HandleEditPost(rw http.ResponseWriter, r *http.Request) {
+	userId := r.Header.Get("System-Design-User-Id")
+	if userId == "" {
+		http.Error(rw, "no auth", http.StatusUnauthorized)
+		return
+	}
+
+	postId := mux.Vars(r)["postId"]
+	if postId == "" {
+		http.Error(rw, "incorrect post id", http.StatusBadRequest)
+		return
+	}
+
+	postIdBase64, err := schemas.IDFromRawString(postId)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var data EditPostRequestData
+	err = json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		http.Error(rw, "bad body", http.StatusBadRequest)
+		return
+	}
+
+	text := data.Text
+	if text == "" {
+		http.Error(rw, "text must not be empty", http.StatusBadRequest)
+		return
+	}
+
+	post, err := h.Storage.GetPost(r.Context(), postIdBase64)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	if string(post.AuthorID) != userId {
+		http.Error(rw, "you shall not pass", http.StatusForbidden)
+		return
+	}
+
+	editedPost, err := h.Storage.EditPost(r.Context(), post.ID, post.AuthorID, schemas.Text(text))
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	postData := editedPost.ToPostData()
+	rawResponse, _ := json.Marshal(postData)
 	rw.Header().Set("Content-Type", "application/json")
 	_, err = rw.Write(rawResponse)
 	if err != nil {
